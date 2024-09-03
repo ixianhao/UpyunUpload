@@ -4,7 +4,7 @@
  * 
  * @package UpyunUpload
  * @author xianhao
- * @version 1.2.0
+ * @version 1.2.1
  * @link https://xianhao.com
  */
 class UpyunUpload_Plugin implements Typecho_Plugin_Interface
@@ -72,7 +72,7 @@ class UpyunUpload_Plugin implements Typecho_Plugin_Interface
         $domain = new Typecho_Widget_Helper_Form_Element_Text(
             'domain', null, '', 
             _t('空间域名'), 
-            _t('请填写又拍云空间绑定的域名，如http://yourname.b0.upaiyun.com')
+            _t('请填写又拍云空间绑定的域名，如https://yourname.b0.upaiyun.com')
         );
         $form->addInput($domain->addRule('required', _t('必须填写空间域名'))
                                ->addRule('url', _t('请填写正确的URL')));
@@ -113,7 +113,7 @@ class UpyunUpload_Plugin implements Typecho_Plugin_Interface
         if (in_array($ext, array('gif', 'jpg', 'jpeg', 'png', 'bmp'))) {
             return self::uploadToUpyun($file);
         } else {
-            return false;
+            return self::uploadToLocal($file);
         }
     }
 
@@ -195,6 +195,62 @@ class UpyunUpload_Plugin implements Typecho_Plugin_Interface
         }
     }
 
+
+    /**
+     * 上传文件到本地
+     * 
+     * @access private
+     * @param array $file 上传的文件
+     * @return mixed
+     */
+    private static function uploadToLocal($file)
+    {
+        self::log("开始上传非图片文件到本地: " . $file['name']);
+        
+        $options = Typecho_Widget::widget('Widget_Options');
+        $date = new Typecho_Date($options->gmtTime);
+        
+        $path = Typecho_Common::url(defined('__TYPECHO_UPLOAD_DIR__') ? __TYPECHO_UPLOAD_DIR__ : '/usr/uploads',
+            defined('__TYPECHO_UPLOAD_ROOT_DIR__') ? __TYPECHO_UPLOAD_ROOT_DIR__ : __TYPECHO_ROOT_DIR__);
+        
+        $path = $path . '/' . $date->year . '/' . $date->month;
+        
+        if (!isset($file['tmp_name'])) {
+            return false;
+        }
+        
+        if (!@is_dir($path)) {
+            if (!@mkdir($path, 0755, true)) {
+                return false;
+            }
+        }
+        
+        $fileName = sprintf('%u', crc32(uniqid())) . '.' . self::getExtension($file['name']);
+        $path = $path . '/' . $fileName;
+        
+        if (isset($file['tmp_name'])) {
+            if (!@move_uploaded_file($file['tmp_name'], $path)) {
+                return false;
+            }
+        } else if (isset($file['bytes'])) {
+            if (!file_put_contents($path, $file['bytes'])) {
+                return false;
+            }
+        } else {
+            return false;
+        }
+        
+        self::log("非图片文件上传成功: {$file['name']} -> {$path}");
+        
+        return array(
+            'name' => $file['name'],
+            'path' => (defined('__TYPECHO_UPLOAD_DIR__') ? __TYPECHO_UPLOAD_DIR__ : '/usr/uploads') . '/' . $date->year . '/' . $date->month . '/' . $fileName,
+            'size' => $file['size'],
+            'type' => $file['type'],
+            'mime' => Typecho_Common::mimeContentType($path)
+        );
+    }
+
     /**
      * 修改文件处理函数
      * 
@@ -214,10 +270,17 @@ class UpyunUpload_Plugin implements Typecho_Plugin_Interface
         if (in_array($ext, array('gif', 'jpg', 'jpeg', 'png', 'bmp'))) {
             if (isset($content['attachment']->parameters['upyun'])) {
                 self::deleteUpyunFile($content['attachment']->path);
+            } else {
+                @unlink(Typecho_Common::url($content['attachment']->path, __TYPECHO_ROOT_DIR__));
             }
             return self::uploadToUpyun($file);
         } else {
-            return false;
+            if (isset($content['attachment']->parameters['upyun'])) {
+                self::deleteUpyunFile($content['attachment']->path);
+            } else {
+                @unlink(Typecho_Common::url($content['attachment']->path, __TYPECHO_ROOT_DIR__));
+            }
+            return self::uploadToLocal($file);
         }
     }
     
@@ -232,8 +295,9 @@ class UpyunUpload_Plugin implements Typecho_Plugin_Interface
     {
         if (isset($content['attachment']->parameters['upyun'])) {
             return self::deleteUpyunFile($content['attachment']->path);
+        } else {
+            return @unlink(Typecho_Common::url($content['attachment']->path, __TYPECHO_ROOT_DIR__));
         }
-        return false;
     }
     
     /**
@@ -248,8 +312,9 @@ class UpyunUpload_Plugin implements Typecho_Plugin_Interface
         if (isset($content['attachment']->parameters['upyun'])) {
             $options = Typecho_Widget::widget('Widget_Options')->plugin('UpyunUpload');
             return Typecho_Common::url($content['attachment']->path, $options->domain);
+        } else {
+            return Typecho_Common::url($content['attachment']->path, Typecho_Widget::widget('Widget_Options')->siteUrl);
         }
-        return false;
     }
 
     /**
