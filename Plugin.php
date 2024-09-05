@@ -3,9 +3,9 @@
  * 又拍云图片上传插件
  * 
  * @package UpyunUpload
- * @author xianhao
- * @version 1.2.1
- * @link https://xianhao.com
+ * @author ixianhao
+ * @version 1.2.3
+ * @link https://ixianhao.com
  */
 class UpyunUpload_Plugin implements Typecho_Plugin_Interface
 {
